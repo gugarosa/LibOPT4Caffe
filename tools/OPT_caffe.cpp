@@ -461,7 +461,7 @@ int train_opt() {
   s = ReadSearchSpaceFromFile("./model_files/pso_model.txt", _PSO_);
   
   InitializeSearchSpace(s, _PSO_); /* It initalizes the search space */ 
-  runPSO(s, EvaluateNetwork); /* It minimizes function EvaluateNetwork based on validation set loss */
+  runPSO(s, EvaluateNetwork); /* It minimizes function EvaluateNetwork based on training set loss */
   
   LOG(INFO) << "Running network with best parameters ... ";
   
