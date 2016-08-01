@@ -411,7 +411,7 @@ double EvaluateBestNetwork(SearchSpace *s) {
     Caffe::set_solver_count(gpus.size());
   }
 
-  /* Initializing CNN main architecture with agent values */
+  /* Initializing network main architecture with agent values */
   solver_param.set_base_lr(s->g[0]);
   solver_param.set_momentum(s->g[1]);
   solver_param.set_weight_decay(s->g[2]);
