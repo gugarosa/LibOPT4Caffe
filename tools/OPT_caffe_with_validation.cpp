@@ -368,7 +368,7 @@ double EvaluateBestNetwork(SearchSpace *s) {
   vector<string> stages = get_stages_from_flags();
 
   caffe::SolverParameter solver_param;
-  caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);
+  caffe::ReadSolverParamsFromTextFileOrDie("examples/mnist/opt_test.prototxt", &solver_param);
 
   solver_param.mutable_train_state()->set_level(FLAGS_level);
   for (int i = 0; i < stages.size(); i++) {
