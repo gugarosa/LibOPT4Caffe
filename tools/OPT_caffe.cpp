@@ -261,6 +261,7 @@ RegisterBrewFunction(train);
 
 // It evaluates a network
 double EvaluateNetwork(Agent *a, va_list arg) {
+  int i, j;
   FILE *f;
   double loss_fitness = 0;
   
@@ -272,103 +273,19 @@ double EvaluateNetwork(Agent *a, va_list arg) {
 
   caffe::SolverParameter solver_param;
   caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);
-
-  solver_param.mutable_train_state()->set_level(FLAGS_level);
-  for (int i = 0; i < stages.size(); i++) {
-    solver_param.mutable_train_state()->add_stage(stages[i]);
-  }
-
-  // If the gpus flag is not provided, allow the mode and device to be set
-  // in the solver prototxt.
-  if (FLAGS_gpu.size() == 0
-      && solver_param.solver_mode() == caffe::SolverParameter_SolverMode_GPU) {
-      if (solver_param.has_device_id()) {
-          FLAGS_gpu = "" +
-              boost::lexical_cast<string>(solver_param.device_id());
-      } else {  // Set default GPU if unspecified
-          FLAGS_gpu = "" + boost::lexical_cast<string>(0);
-      }
-  }
-
-  vector<int> gpus;
-  get_gpus(&gpus);
-  if (gpus.size() == 0) {
-    LOG(INFO) << "Use CPU.";
-    Caffe::set_mode(Caffe::CPU);
-  } else {
-    ostringstream s;
-    for (int i = 0; i < gpus.size(); ++i) {
-      s << (i ? ", " : "") << gpus[i];
-    }
-    LOG(INFO) << "Using GPUs " << s.str();
-#ifndef CPU_ONLY
-    cudaDeviceProp device_prop;
-    for (int i = 0; i < gpus.size(); ++i) {
-      cudaGetDeviceProperties(&device_prop, gpus[i]);
-      LOG(INFO) << "GPU " << gpus[i] << ": " << device_prop.name;
-    }
-#endif
-    solver_param.set_device_id(gpus[0]);
-    Caffe::SetDevice(gpus[0]);
-    Caffe::set_mode(Caffe::GPU);
-    Caffe::set_solver_count(gpus.size());
-  }
-
-  /* Initializing CNN main architecture with agent values */
-  solver_param.set_base_lr(a->x[0]);
-  solver_param.set_momentum(a->x[1]);
-  solver_param.set_weight_decay(a->x[2]);
-
-  caffe::SignalHandler signal_handler(
-        GetRequestedAction(FLAGS_sigint_effect),
-        GetRequestedAction(FLAGS_sighup_effect));
-
-  shared_ptr<caffe::Solver<float> >
-      solver(caffe::SolverRegistry<float>::CreateSolver(solver_param));
-
-  solver->SetActionFunction(signal_handler.GetActionFunction());
-
-  if (FLAGS_snapshot.size()) {
-    LOG(INFO) << "Resuming from " << FLAGS_snapshot;
-    solver->Restore(FLAGS_snapshot.c_str());
-  } else if (FLAGS_weights.size()) {
-    CopyLayers(solver.get(), FLAGS_weights);
-  }
-
-  if (gpus.size() > 1) {
-    caffe::P2PSync<float> sync(solver, NULL, solver->param());
-    sync.Run(gpus);
-  } else {
-    LOG(INFO) << "Starting Optimization";
-    solver->Solve();
-  }
-  LOG(INFO) << "Optimization Done.";
-
-  f = fopen("loss.txt","r");
-  if(!f){
-    fprintf(stderr,"\nUnable to open loss.txt @EvaluateNetwork.");
-    exit(-1);
-  }else {
-    fscanf(f, "%lf", &loss_fitness);
-  }
-  fclose(f);
-
-  return loss_fitness;
-}
-
-// It evaluates the best network
-double EvaluateBestNetwork(SearchSpace *s) {
-  FILE *f;
-  double accuracy = 0;
   
-  CHECK_GT(FLAGS_solver.size(), 0) << "Need a solver definition to train.";
-  CHECK(!FLAGS_snapshot.size() || !FLAGS_weights.size())
-      << "Give a snapshot to resume training or weights to finetune "
-      "but not both.";
-  vector<string> stages = get_stages_from_flags();
+  /* Initializing network prototxt main architecture with agent values */
+  j = 3;
+  caffe::NetParameter net_param;
+  ReadNetParamsFromTextFileOrDie(solver_param.net(), &net_param);
 
-  caffe::SolverParameter solver_param;
-  caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);
+  for (i = 0; i < net_param.layer().size(); i++) {
+    if (net_param.layer(i).type() == "Convolution"){
+    	net_param.layer(i).convolution_param().set_num_output(a->x[j++]);
+    }
+  }
+
+  WriteProtoToTextFile(net_param, solver_param.net());
 
   solver_param.mutable_train_state()->set_level(FLAGS_level);
   for (int i = 0; i < stages.size(); i++) {
@@ -412,6 +329,117 @@ double EvaluateBestNetwork(SearchSpace *s) {
   }
 
   /* Initializing network main architecture with agent values */
+  solver_param.set_base_lr(a->x[0]);
+  solver_param.set_momentum(a->x[1]);
+  solver_param.set_weight_decay(a->x[2]);
+
+  caffe::SignalHandler signal_handler(
+        GetRequestedAction(FLAGS_sigint_effect),
+        GetRequestedAction(FLAGS_sighup_effect));
+
+  shared_ptr<caffe::Solver<float> >
+      solver(caffe::SolverRegistry<float>::CreateSolver(solver_param));
+
+  solver->SetActionFunction(signal_handler.GetActionFunction());
+
+  if (FLAGS_snapshot.size()) {
+    LOG(INFO) << "Resuming from " << FLAGS_snapshot;
+    solver->Restore(FLAGS_snapshot.c_str());
+  } else if (FLAGS_weights.size()) {
+    CopyLayers(solver.get(), FLAGS_weights);
+  }
+
+  if (gpus.size() > 1) {
+    caffe::P2PSync<float> sync(solver, NULL, solver->param());
+    sync.Run(gpus);
+  } else {
+    LOG(INFO) << "Starting Optimization";
+    solver->Solve();
+  }
+  LOG(INFO) << "Optimization Done.";
+
+  f = fopen("loss.txt","r");
+  if(!f){
+    fprintf(stderr,"\nUnable to open loss.txt @EvaluateNetwork.");
+    exit(-1);
+  }else {
+    fscanf(f, "%lf", &loss_fitness);
+  }
+  fclose(f);
+
+  return loss_fitness;
+}
+
+// It evaluates the best network
+double EvaluateBestNetwork(SearchSpace *s) {
+  int i, j;
+  FILE *f;
+  double accuracy = 0;
+  
+  CHECK_GT(FLAGS_solver.size(), 0) << "Need a solver definition to train.";
+  CHECK(!FLAGS_snapshot.size() || !FLAGS_weights.size())
+      << "Give a snapshot to resume training or weights to finetune "
+      "but not both.";
+  vector<string> stages = get_stages_from_flags();
+
+  caffe::SolverParameter solver_param;
+  caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);
+  
+  /* Initializing network prototxt main architecture with best agent values */
+  j = 3;
+  caffe::NetParameter net_param;
+  ReadNetParamsFromTextFileOrDie(solver_param.net(), &net_param);
+
+  for (i = 0; i < net_param.layer().size(); i++) {
+    if (net_param.layer(i).type() == "Convolution"){
+    	net_param.layer(i).convolution_param().set_num_output(s->g[j++]);
+    }
+  }
+
+  WriteProtoToTextFile(net_param, solver_param.net());
+
+  solver_param.mutable_train_state()->set_level(FLAGS_level);
+  for (int i = 0; i < stages.size(); i++) {
+    solver_param.mutable_train_state()->add_stage(stages[i]);
+  }
+
+  // If the gpus flag is not provided, allow the mode and device to be set
+  // in the solver prototxt.
+  if (FLAGS_gpu.size() == 0
+      && solver_param.solver_mode() == caffe::SolverParameter_SolverMode_GPU) {
+      if (solver_param.has_device_id()) {
+          FLAGS_gpu = "" +
+              boost::lexical_cast<string>(solver_param.device_id());
+      } else {  // Set default GPU if unspecified
+          FLAGS_gpu = "" + boost::lexical_cast<string>(0);
+      }
+  }
+
+  vector<int> gpus;
+  get_gpus(&gpus);
+  if (gpus.size() == 0) {
+    LOG(INFO) << "Use CPU.";
+    Caffe::set_mode(Caffe::CPU);
+  } else {
+    ostringstream s;
+    for (int i = 0; i < gpus.size(); ++i) {
+      s << (i ? ", " : "") << gpus[i];
+    }
+    LOG(INFO) << "Using GPUs " << s.str();
+#ifndef CPU_ONLY
+    cudaDeviceProp device_prop;
+    for (int i = 0; i < gpus.size(); ++i) {
+      cudaGetDeviceProperties(&device_prop, gpus[i]);
+      LOG(INFO) << "GPU " << gpus[i] << ": " << device_prop.name;
+    }
+#endif
+    solver_param.set_device_id(gpus[0]);
+    Caffe::SetDevice(gpus[0]);
+    Caffe::set_mode(Caffe::GPU);
+    Caffe::set_solver_count(gpus.size());
+  }
+
+  /* Initializing network main architecture with best agent values */
   solver_param.set_base_lr(s->g[0]);
   solver_param.set_momentum(s->g[1]);
   solver_param.set_weight_decay(s->g[2]);
@@ -468,7 +496,7 @@ int train_opt() {
   accuracy = EvaluateBestNetwork(s); /* It evaluates a network with the best parameters found */
   
   LOG(INFO) << "Best Agent Accuracy: " << accuracy;
-  LOG(INFO) << "Best Agent Parameters: " << s->g[0] << " " << s->g[1] << " " << s->g[2];
+  LOG(INFO) << "Best Agent Parameters: " << s->g[0] << " " << s->g[1] << " " << s->g[2] << " " << s->g[3] << " " << s->g[4];
 
   DestroySearchSpace(&s, _PSO_); /* It deallocates the search space */
   

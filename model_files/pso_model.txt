@@ -4,3 +4,5 @@
 0.001 0.1 #<LB> <UB> base learning rate
 0 1 #<LB> <UB> momentum
 0.0005 0.005 #<LB> <UB> weight decay
+100 200 #<LB> <UB> convolution layer #1 number of outputs
+100 200 #<LB> <UB> convolution layer #2 number of outputs
