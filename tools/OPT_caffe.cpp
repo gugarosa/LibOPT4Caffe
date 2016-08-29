@@ -483,6 +483,8 @@ double EvaluateBestNetwork(SearchSpace *s) {
 
 // It trains a model with an optimization technique
 int train_opt() {
+  int i;
+  FILE *f;
   SearchSpace *s = NULL;
   double accuracy = 0;
     
@@ -496,7 +498,17 @@ int train_opt() {
   accuracy = EvaluateBestNetwork(s); /* It evaluates a network with the best parameters found */
   
   LOG(INFO) << "Best Agent Accuracy: " << accuracy;
-  LOG(INFO) << "Best Agent Parameters: " << s->g[0] << " " << s->g[1] << " " << s->g[2] << " " << s->g[3] << " " << s->g[4];
+  LOG(INFO) << "Best Agent Paramets saved to best_parameters.txt";
+  
+  f = fopen("final_accuracy.txt", "a");
+  fprintf(f, "%lf\n", accuracy);
+  fclose(f);
+
+  f = fopen("best_parameters.txt", "a");
+  for (i = 0; i < s->n; i++)
+      fprintf(f, "%lf ", s->g[i]);
+  fprintf(f, "\n");
+  fclose(f);
 
   DestroySearchSpace(&s, _PSO_); /* It deallocates the search space */
   
