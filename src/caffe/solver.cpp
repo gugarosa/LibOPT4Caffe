@@ -315,9 +315,6 @@ void Solver<Dtype>::Solve(const char* resume_file) {
     UpdateSmoothedLoss(loss, start_iter, average_loss);
 
     LOG(INFO) << "Iteration " << iter_ << ", loss = " << smoothed_loss_;
-    FILE *f = fopen("loss.txt", "w");
-    fprintf(f,"%lf", loss);
-    fclose(f);
   }
   if (param_.test_interval() && iter_ % param_.test_interval() == 0) {
     TestAll();
@@ -413,6 +410,12 @@ void Solver<Dtype>::Test(const int test_net_id) {
       fprintf(f, "%lf", mean_score);
       fclose(f);
     }
+    if (i){
+	  FILE *f;
+	  f = fopen("loss.txt", "w");
+      fprintf(f,"%lf", loss);
+      fclose(f);
+	}
   }
 }
 

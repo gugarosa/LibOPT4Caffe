@@ -410,9 +410,12 @@ void Solver<Dtype>::Test(const int test_net_id) {
       fprintf(f, "%lf", mean_score);
       fclose(f);
     }
-    FILE *f = fopen("loss.txt", "w");
-    fprintf(f,"%lf", mean_score);
-    fclose(f);
+    if (i){
+	  FILE *f;
+      f = fopen("loss.txt", "w");
+      fprintf(f,"%lf", mean_score);
+      fclose(f);
+    }
   }
 }
 
