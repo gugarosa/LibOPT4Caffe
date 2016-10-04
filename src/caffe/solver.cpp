@@ -413,7 +413,7 @@ void Solver<Dtype>::Test(const int test_net_id) {
     if (i){
 	  FILE *f;
 	  f = fopen("loss.txt", "w");
-      fprintf(f,"%lf", loss);
+      fprintf(f,"%lf", mean_score);
       fclose(f);
 	}
   }
