@@ -198,6 +198,7 @@ int train() {
   // If the gpus flag is not provided, allow the mode and device to be set
   // in the solver prototxt.
   if (FLAGS_gpu.size() == 0
+      && solver_param.has_solver_mode()
       && solver_param.solver_mode() == caffe::SolverParameter_SolverMode_GPU) {
       if (solver_param.has_device_id()) {
           FLAGS_gpu = "" +
@@ -247,25 +248,29 @@ int train() {
     CopyLayers(solver.get(), FLAGS_weights);
   }
 
+  LOG(INFO) << "Starting Optimization";
   if (gpus.size() > 1) {
-    caffe::P2PSync<float> sync(solver, NULL, solver->param());
-    sync.Run(gpus);
+#ifdef USE_NCCL
+    caffe::NCCL<float> nccl(solver);
+    nccl.Run(gpus, FLAGS_snapshot.size() > 0 ? FLAGS_snapshot.c_str() : NULL);
+#else
+    LOG(FATAL) << "Multi-GPU execution not available - rebuild with USE_NCCL";
+#endif
   } else {
-    LOG(INFO) << "Starting Optimization";
     solver->Solve();
   }
   LOG(INFO) << "Optimization Done.";
-  
   return 0;
 }
 RegisterBrewFunction(train);
+
 
 // It evaluates a network
 double EvaluateNetwork(Agent *a, va_list arg) {
   int i, j;
   FILE *f;
   double loss_fitness = 0;
-  
+
   CHECK_GT(FLAGS_solver.size(), 0) << "Need a solver definition to train.";
   CHECK(!FLAGS_snapshot.size() || !FLAGS_weights.size())
       << "Give a snapshot to resume training or weights to finetune "
@@ -296,6 +301,7 @@ double EvaluateNetwork(Agent *a, va_list arg) {
   // If the gpus flag is not provided, allow the mode and device to be set
   // in the solver prototxt.
   if (FLAGS_gpu.size() == 0
+      && solver_param.has_solver_mode()
       && solver_param.solver_mode() == caffe::SolverParameter_SolverMode_GPU) {
       if (solver_param.has_device_id()) {
           FLAGS_gpu = "" +
@@ -350,11 +356,15 @@ double EvaluateNetwork(Agent *a, va_list arg) {
     CopyLayers(solver.get(), FLAGS_weights);
   }
 
+  LOG(INFO) << "Starting Optimization";
   if (gpus.size() > 1) {
-    caffe::P2PSync<float> sync(solver, NULL, solver->param());
-    sync.Run(gpus);
+#ifdef USE_NCCL
+    caffe::NCCL<float> nccl(solver);
+    nccl.Run(gpus, FLAGS_snapshot.size() > 0 ? FLAGS_snapshot.c_str() : NULL);
+#else
+    LOG(FATAL) << "Multi-GPU execution not available - rebuild with USE_NCCL";
+#endif
   } else {
-    LOG(INFO) << "Starting Optimization";
     solver->Solve();
   }
   LOG(INFO) << "Optimization Done.";
@@ -376,7 +386,7 @@ double EvaluateBestNetwork(SearchSpace *s) {
   int i, j;
   FILE *f;
   double accuracy = 0;
-  
+
   CHECK_GT(FLAGS_solver.size(), 0) << "Need a solver definition to train.";
   CHECK(!FLAGS_snapshot.size() || !FLAGS_weights.size())
       << "Give a snapshot to resume training or weights to finetune "
@@ -407,6 +417,7 @@ double EvaluateBestNetwork(SearchSpace *s) {
   // If the gpus flag is not provided, allow the mode and device to be set
   // in the solver prototxt.
   if (FLAGS_gpu.size() == 0
+      && solver_param.has_solver_mode()
       && solver_param.solver_mode() == caffe::SolverParameter_SolverMode_GPU) {
       if (solver_param.has_device_id()) {
           FLAGS_gpu = "" +
@@ -461,11 +472,15 @@ double EvaluateBestNetwork(SearchSpace *s) {
     CopyLayers(solver.get(), FLAGS_weights);
   }
 
+  LOG(INFO) << "Starting Optimization";
   if (gpus.size() > 1) {
-    caffe::P2PSync<float> sync(solver, NULL, solver->param());
-    sync.Run(gpus);
+#ifdef USE_NCCL
+    caffe::NCCL<float> nccl(solver);
+    nccl.Run(gpus, FLAGS_snapshot.size() > 0 ? FLAGS_snapshot.c_str() : NULL);
+#else
+    LOG(FATAL) << "Multi-GPU execution not available - rebuild with USE_NCCL";
+#endif
   } else {
-    LOG(INFO) << "Starting Optimization";
     solver->Solve();
   }
   LOG(INFO) << "Optimization Done.";
@@ -488,19 +503,19 @@ int train_opt() {
   FILE *f;
   SearchSpace *s = NULL;
   double accuracy = 0;
-    
+
   s = ReadSearchSpaceFromFile("./model_files/pso_model.txt", _PSO_);
-  
-  InitializeSearchSpace(s, _PSO_); /* It initalizes the search space */ 
+
+  InitializeSearchSpace(s, _PSO_); /* It initalizes the search space */
   runPSO(s, EvaluateNetwork); /* It minimizes function EvaluateNetwork based on validation set loss */
-  
+
   LOG(INFO) << "Running network with best parameters ... ";
-  
+
   accuracy = EvaluateBestNetwork(s); /* It evaluates a network with the best parameters found */
-  
+
   LOG(INFO) << "Best Agent Accuracy: " << accuracy;
   LOG(INFO) << "Best Agent Paramets saved to best_parameters.txt";
-  
+
   f = fopen("final_accuracy.txt", "a");
   fprintf(f, "%lf\n", accuracy);
   fclose(f);
@@ -512,7 +527,7 @@ int train_opt() {
   fclose(f);
 
   DestroySearchSpace(&s, _PSO_); /* It deallocates the search space */
-  
+
   return 0;
 }
 RegisterBrewFunction(train_opt);
