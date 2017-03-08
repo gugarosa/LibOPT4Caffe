@@ -670,8 +670,7 @@ message DropoutParameter {
 
 message DropconnectParameter {
     optional float dropconnect_ratio = 1 [default = 0.5]; // dropconnect ratio
-    optional uint32 num_output = 2; // The number of outputs for the layer
-    optional FillerParameter weight_filler = 3; // The filler for the weight
+    optional FillerParameter weight_filler = 2; // The filler for the weight
 }
 
 // DummyDataLayer fills any number of arbitrarily shaped blobs with random

@@ -9,17 +9,14 @@ namespace caffe {
 template <typename Dtype>
 void DropconnectLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
-  const int num_output = this->layer_param_.dropconnect_param().num_output();
   transpose_ = false;
-  N_ = num_output;
   const int axis = bottom[0]->CanonicalAxisIndex(1);
-  K_ = bottom[0]->count(axis);
+  N_ = K_ = bottom[0]->count(axis);
   threshold_ = this->layer_param_.dropconnect_param().dropconnect_ratio();
   DCHECK(threshold_ > 0.);
   DCHECK(threshold_ < 1.);
   scale_ = 1. / (1. - threshold_);
   uint_thres_ = static_cast<unsigned int>(UINT_MAX * threshold_);
-  LOG(INFO) << "Dropconnect ratio: " << threshold_ << " " << scale_ << " " << uint_thres_;
   // Check if we need to set up the weights
   if (this->blobs_.size() > 0) {
     LOG(INFO) << "Skipping parameter initialization";
@@ -36,26 +33,14 @@ void DropconnectLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     weight_filler->Fill(this->blobs_[0].get());
   }  // parameter initialization
   this->param_propagate_down_.resize(this->blobs_.size(), true);
-  LOG(INFO) << "Dropconnect Setup OK";
 }
 
 template <typename Dtype>
 void DropconnectLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
-  // Figure out the dimensions
-  const int axis = bottom[0]->CanonicalAxisIndex(1);
-  const int new_K = bottom[0]->count(axis);
-  CHECK_EQ(K_, new_K)
-      << "Input size incompatible with inner product parameters.";
-  // The first "axis" dimensions are independent inner products; the total
-  // number of these is M_, the product over these dimensions.
-  M_ = bottom[0]->count(0, axis);
-  // The top shape will be the bottom shape with the flattened axes dropped,
-  // and replaced by a single axis with dimension num_output (N_).
-  vector<int> top_shape = bottom[0]->shape();
-  top_shape.resize(axis + 1);
-  top_shape[axis] = N_;
-  top[0]->Reshape(top_shape);
+  M_ = bottom[0]->count(0, 1);
+  top[0]->Reshape(bottom[0]->shape());
+  rand_mat_.Reshape(this->blobs_[0]->shape());
 }
 
 template <typename Dtype>

@@ -26,8 +26,6 @@ class DropconnectLayer : public Layer<Dtype> {
       const vector<Blob<Dtype>*>& top);
 
   virtual inline const char* type() const { return "Dropconnect"; }
-  virtual inline int ExactNumBottomBlobs() const { return 1; }
-  virtual inline int ExactNumTopBlobs() const { return 1; }
 
  protected:
   virtual void Forward_cpu(const vector<Blob<Dtype>*>& bottom,
@@ -43,6 +41,9 @@ class DropconnectLayer : public Layer<Dtype> {
   int K_;
   int N_;
   bool transpose_;
+  Blob<unsigned int> rand_mat_;
+  Blob<Dtype> dropped_weight_;
+  Blob<Dtype> dropped_top_diff_;
   Dtype threshold_;
   Dtype scale_;
   unsigned int uint_thres_;
