@@ -44,6 +44,13 @@ class DropconnectLayer : public Layer<Dtype> {
   Blob<unsigned int> rand_mat_;
   Blob<Dtype> dropped_weight_;
   Blob<Dtype> dropped_top_diff_;
+  Blob<Dtype> inference_weight_;
+  Blob<Dtype> mean_inference_;
+  Blob<Dtype> squared_weight_;
+  Blob<Dtype> squared_bottom_;
+  Blob<Dtype> partial_inference_;
+  Blob<Dtype> var_inference_;
+  Blob<Dtype> gaussian_;
   Dtype threshold_;
   Dtype scale_;
   unsigned int uint_thres_;

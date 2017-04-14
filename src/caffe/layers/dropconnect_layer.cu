@@ -15,6 +15,28 @@ __global__ void DropconnectForward(const int n, const Dtype* in,
 }
 
 template <typename Dtype>
+__global__ void DropconnectScalarMultiply(const int n, const Dtype* in, const float scalar, Dtype* out) {
+  CUDA_KERNEL_LOOP(index, n) {
+    out[index] = in[index] * (1-scalar);
+  }
+}
+
+template <typename Dtype>
+__global__ void DropconnectScalarMultiply2(const int n, const Dtype* in, const float scalar, Dtype* out) {
+  CUDA_KERNEL_LOOP(index, n) {
+    out[index] = in[index] * (1-scalar) * scalar;
+  }
+}
+
+template <typename Dtype>
+__global__ void DropconnectGaussian(const int n, const Dtype* mu, const Dtype* var, Dtype* g, Dtype* out) {
+  CUDA_KERNEL_LOOP(index, n) {
+    //caffe_gpu_rng_gaussian(1, mu[index], var[index], g);
+    out[index] = g[0];
+  }
+}
+
+template <typename Dtype>
 void DropconnectLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
   const Dtype* bottom_data = bottom[0]->gpu_data();
@@ -23,7 +45,13 @@ void DropconnectLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
   const Dtype* weight = this->blobs_[0]->gpu_data();
   const int count = this->blobs_[0]->count();
   dropped_weight_.Reshape(this->blobs_[0]->shape());
+  inference_weight_.Reshape(this->blobs_[0]->shape());
+  mean_inference_.Reshape(top[0]->shape());
+  var_inference_.Reshape(top[0]->shape());
   Dtype* dropped_weight = static_cast<Dtype*>(dropped_weight_.mutable_gpu_data());
+  Dtype* inference_weight = static_cast<Dtype*>(inference_weight_.mutable_gpu_data());
+  Dtype* mean_inference = static_cast<Dtype*>(mean_inference_.mutable_gpu_data());
+  Dtype* var_inference = static_cast<Dtype*>(var_inference_.mutable_gpu_data());
   if (this->phase_ == TRAIN) {
       unsigned int* mask = static_cast<unsigned int*>(rand_mat_.mutable_gpu_data());
       caffe_gpu_rng_uniform(count, mask);
@@ -40,14 +68,51 @@ void DropconnectLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
                               bottom_data, dropped_weight, (Dtype)0., top_data);
       }
   } else {
+      const int top_count = top[0]->count();
+      DropconnectScalarMultiply<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(count, weight, threshold_, inference_weight);
+      CUDA_POST_KERNEL_CHECK;
+      squared_weight_.Reshape(this->blobs_[0]->shape());
+      squared_bottom_.Reshape(bottom[0]->shape());
+      partial_inference_.Reshape(top[0]->shape());
+      gaussian_.Reshape(top[0]->shape());
+      Dtype* squared_weight = static_cast<Dtype*>(squared_weight_.mutable_gpu_data());
+      Dtype* squared_bottom = static_cast<Dtype*>(squared_bottom_.mutable_gpu_data());
+      Dtype* partial_inference = static_cast<Dtype*>(partial_inference_.mutable_gpu_data());
+      Dtype* gaussian = static_cast<Dtype*>(gaussian_.mutable_gpu_data());
       if (M_ == 1) {
         caffe_gpu_gemv<Dtype>(CblasNoTrans, N_, K_, (Dtype)1.,
-                             weight, bottom_data, (Dtype)0., top_data);
+                             inference_weight, bottom_data, (Dtype)0., mean_inference);
+        caffe_gpu_gemv<Dtype>(CblasNoTrans, N_, K_, (Dtype)1.,
+                             weight, weight, (Dtype)0., squared_weight);
+        caffe_gpu_gemv<Dtype>(CblasNoTrans, N_, K_, (Dtype)1.,
+                             bottom_data, bottom_data, (Dtype)0., squared_bottom);
+        caffe_gpu_gemv<Dtype>(CblasNoTrans, N_, K_, (Dtype)1.,
+                             squared_weight, squared_bottom, (Dtype)0., partial_inference);
+        DropconnectScalarMultiply2<Dtype><<<CAFFE_GET_BLOCKS(top_count), CAFFE_CUDA_NUM_THREADS>>>(top_count, partial_inference, threshold_, var_inference);
+        CUDA_POST_KERNEL_CHECK;
+        DropconnectGaussian<Dtype><<<CAFFE_GET_BLOCKS(top_count), CAFFE_CUDA_NUM_THREADS>>>(top_count, mean_inference, var_inference, gaussian, top_data);
+        CUDA_POST_KERNEL_CHECK;
       } else {
         caffe_gpu_gemm<Dtype>(CblasNoTrans,
                               transpose_ ? CblasNoTrans : CblasTrans,
                               M_, N_, K_, (Dtype)1.,
-                              bottom_data, weight, (Dtype)0., top_data);
+                              bottom_data, inference_weight, (Dtype)0., mean_inference);
+        caffe_gpu_gemm<Dtype>(CblasNoTrans,
+                              transpose_ ? CblasNoTrans : CblasTrans,
+                              M_, N_, K_, (Dtype)1.,
+                              weight, weight, (Dtype)0., squared_weight);
+        caffe_gpu_gemm<Dtype>(CblasNoTrans,
+                              transpose_ ? CblasNoTrans : CblasTrans,
+                              M_, N_, K_, (Dtype)1.,
+                              bottom_data, bottom_data, (Dtype)0., squared_bottom);
+        caffe_gpu_gemm<Dtype>(CblasNoTrans,
+                              transpose_ ? CblasNoTrans : CblasTrans,
+                              M_, N_, K_, (Dtype)1.,
+                              squared_bottom, squared_weight, (Dtype)0., partial_inference);
+        DropconnectScalarMultiply2<Dtype><<<CAFFE_GET_BLOCKS(top_count), CAFFE_CUDA_NUM_THREADS>>>(top_count, partial_inference, threshold_, var_inference);
+        CUDA_POST_KERNEL_CHECK;
+        DropconnectGaussian<Dtype><<<CAFFE_GET_BLOCKS(top_count), CAFFE_CUDA_NUM_THREADS>>>(top_count, mean_inference, var_inference, gaussian, top_data);
+        CUDA_POST_KERNEL_CHECK;
       }
   }
 }
